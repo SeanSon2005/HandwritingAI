@@ -1,6 +1,5 @@
 #import tensorflow as tf
 #from tensorflow import keras
-from dis import dis
 import numpy as np
 import cv2
 import os
@@ -25,36 +24,36 @@ def annotate_image(image):
     img = mask + mask2
 
     coord_array = generate_coordinates(img,mask2)
-    #for i in coord_array:
-        #x = int(i[2])
-        #y = int(i[4])
-        #cv2.circle(mask,(x,y),5,(0,255,0),2)
+    for i in coord_array:
+        cv2.rectangle(resized,(i[0],i[1]),(i[2],i[3]),(0,255,0),2)
 
-    cv2.imshow("image",coord_array)
+
+    cv2.imshow("image",resized)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
     
 
 def generate_coordinates(image,mask):
-    image = image[:,120:(image.shape[1]-1)]
+    image = image[:,120:(image.shape[1]-10)]
     width = image.shape[1]
     height = image.shape[0]
     output = cv2.blur(image,(int(width/150),int(height/150)))
     output = cv2.inRange(output,0,225)
     lines = find_lines(mask)
+    letter_cells = []
     for i in range(len(lines)-1):
         sub_img = output[lines[i]:lines[i+1]]
-        cv2.imshow("image",sub_img)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-        for j in range(width):
-            if np.sum(sub_img[:,j]) > 60:
-                print("1",end="")
-            else:
-                print("0",end="")
-        print("")
+        iter = 0
+        start = 0
+        while iter < (width-1):
+            start = iter
+            if np.sum(sub_img[:,iter]) > 60:
+                while np.sum(sub_img[:,iter]) > 60 and (iter < (width-1)):
+                    iter+=1
+                letter_cells.append((start+120,lines[i],iter+120,lines[i+1]))
+            iter+=1
 
-    return output
+    return letter_cells
 def find_lines(image):
     width = image.shape[1]
     height = image.shape[0]

@@ -8,6 +8,7 @@ from kivy.app import App
 from kivy.uix.label import Label
 import tensorflow as tf
 from tensorflow import keras
+import re
 
 image = np.array([0])
 type_conv = 0
@@ -40,6 +41,7 @@ def camera():
             break
     vid.release()
     cv2.destroyAllWindows()
+    return frame
 
 def settings():
     global image_dir
@@ -88,12 +90,13 @@ def generate_practice(usage):
         print("Enter when done")
         done = input()
         print("Launching Camera...")
-        camera()
-        annotate_image()
+        image = camera()
+        annotate_image(image)
 
 def create_practice():
     global practice_length
     global practice_text
+    global image
     print("Please type how many words to input")
     print("Length:",end="")
     length = input()
@@ -104,19 +107,74 @@ def create_practice():
         text = input()
         practice_text.append(text)
     print("Launching Camera...")
-    camera()
-    annotate_image()
+    image = camera()
+    annotate_image(image)
 
-def annotate_image():
-    global image
+def annotate_image(image):
+    lower_threshold = np.array([0,0,100])
+    upper_threshold = np.array([170,45,255])
+    lower_threshold2 = np.array([85,0,0])
+    upper_threshold2 = np.array([107,255,255])
     print("Generating Legibility Report")
-    grayImage = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    image_array = generate_images(grayImage)
-    for i in image_array:
-        image = i[0]
+    scale_percent =  30# percent of original size
+    width = int(image.shape[1] * scale_percent / 100)
+    height = int(image.shape[0] * scale_percent / 100)
+    dim = (width, height)
+    resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
 
-def generate_images(image):
-    return [(image,0,0)]
+    hsv = cv2.cvtColor(resized, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, lower_threshold, upper_threshold)
+    mask2 = cv2.inRange(hsv, lower_threshold2, upper_threshold2)
+    img = mask + mask2
+
+    coord_array = generate_coordinates(img,mask2)
+    #for i in coord_array:
+        #x = int(i[2])
+        #y = int(i[4])
+        #cv2.circle(mask,(x,y),5,(0,255,0),2)
+
+    cv2.imshow("image",coord_array)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    
+
+def generate_coordinates(image,mask):
+    image = image[:,120:(image.shape[1]-1)]
+    width = image.shape[1]
+    height = image.shape[0]
+    output = cv2.blur(image,(int(width/150),int(height/150)))
+    output = cv2.inRange(output,0,225)
+    lines = find_lines(mask)
+    for i in range(len(lines)-1):
+        sub_img = output[lines[i]:lines[i+1]]
+        cv2.imshow("image",sub_img)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        for j in range(width):
+            if np.sum(sub_img[:,j]) > 60:
+                print("1",end="")
+            else:
+                print("0",end="")
+        print("")
+
+    return output
+def find_lines(image):
+    width = image.shape[1]
+    height = image.shape[0]
+    output = cv2.blur(image,(int(width/100),int(height/100)))
+    output = cv2.inRange(output,0,50)
+    lines = []
+    cur_line = False
+    iter = 1
+    for i in output:
+        line_likely = (np.sum(i) < 30000)
+        if(line_likely and not cur_line):
+            cur_line = True
+            lines.append(iter + (int(width/200)))
+        elif(not line_likely):
+            cur_line = False
+        iter+=1
+    return lines
 
 def take_test():
     generate_practice(False)
