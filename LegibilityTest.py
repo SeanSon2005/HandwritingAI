@@ -1,17 +1,51 @@
-#import tensorflow as tf
-#from tensorflow import keras
-from distutils.command.clean import clean
 from PIL import Image, ImageEnhance
 import numpy as np
 import cv2
 import os
 import re
 import math
+import pytesseract
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 def annotate_image(image):
     print("Generating Legibility Report")
-    scale_percent =  100# percent of original size
-    width = int(image.shape[1] * scale_percent / 100)
+    result = ImageProcess(image, 1500)
+    cv2.imshow("res",result)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    max_score = findCharacters(result.copy())
+    boxes = pytesseract.image_to_string(result.copy())
+    count = len(boxes)
+    score = count/max_score * 100
+    print(score)
+
+def findCharacters(image):
+    gray = image.copy()
+    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU)
+    ctrs, hier = cv2.findContours(thresh.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    sorted_ctrs = sorted(ctrs, key=lambda ctr: cv2.boundingRect(ctr)[0])
+    character_count = 0
+    for i, ctr in enumerate(sorted_ctrs):
+        x, y, w, h = cv2.boundingRect(ctr)
+
+        roi = image[y:y + h, x:x + w]
+
+        area = w*h
+
+        if 100 < area < 1500 and (w / h) < 3:
+            character_count+=1
+            #rect = cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+    return character_count
+
+
+
+def ImageProcess(image, factor_value):
+    current_img_width = image.shape[1]
+    scale_percent = 100
+    if(current_img_width > factor_value):
+        scale_percent = factor_value/current_img_width*100
+    
+    width = int(current_img_width * scale_percent / 100)
     height = int(image.shape[0] * scale_percent / 100)
     dim = (width, height)
     resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
@@ -23,20 +57,17 @@ def annotate_image(image):
 
     gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
     gray = BrightnessContrast(3,gray)
-    ret,thresh = cv2.threshold(gray,165,255,cv2.THRESH_BINARY)
+    ret,thresh = cv2.threshold(gray,200,255,cv2.THRESH_BINARY)
     kernel = np.ones((1, 1), np.uint8)
     erode = cv2.erode(thresh, kernel, iterations = 1)
     result = cv2.bitwise_or(gray, erode)
-    cv2.imshow("contrast",gray)
-    cv2.imshow("res",result)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    return result
 
 def BrightnessContrast(factor, image):
     img = Image.fromarray(image)
     enhancer = ImageEnhance.Contrast(img)
     output = enhancer.enhance(factor)
-    return np.asarray(output)
+    return np.asarray(img)
     
 def blur_and_threshold(gray):
     gray = cv2.GaussianBlur(gray, (3, 3), 2)
@@ -101,35 +132,24 @@ def four_point_transform(image, pts):
 
 def transformation(image):
     image = image.copy()
-
     height, width, channels = image.shape
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     image_size = gray.size
     threshold = blur_and_threshold(gray)
-    threshold = BrightnessContrast(2,threshold)
     threshold = cv2.blur(threshold,(4,4))
     edges = cv2.Canny(threshold, 50, 150, apertureSize=7)
 
-    cv2.imshow("edges",edges)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-    contours, hierarchy = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     simplified_contours = []
 
     for cnt in contours:
         hull = cv2.convexHull(cnt)
         simplified_contours.append(cv2.approxPolyDP(hull,0.001 * cv2.arcLength(hull, True), True))
     simplified_contours = np.array(simplified_contours,dtype=object)
-    
+
     biggest_n, approx_contour = biggest_contour(simplified_contours, image_size)
 
     threshold = cv2.drawContours(image, simplified_contours, biggest_n, (0, 255, 0), 1)
-    test = cv2.drawContours(image, contours, 0, (0, 255, 0), 1)
-    
-    cv2.imshow("cont",test)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
 
     dst = 0
     if approx_contour is not None and len(approx_contour) == 4:
@@ -138,10 +158,7 @@ def transformation(image):
     croppedImage = dst
     cleanedImage = final_image(croppedImage)
 
-    cv2.imshow("cont",croppedImage)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    return croppedImage
+    return cleanedImage
 
 def increase_brightness(img, value=30):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)

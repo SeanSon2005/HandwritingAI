@@ -2,16 +2,11 @@ import numpy as np
 import cv2
 import os
 from random import randint
-import kivy
-kivy.require('2.1.0') 
-from kivy.app import App
-from kivy.uix.label import Label
-#import tensorflow as tf
-#from tensorflow import keras
 from PIL import Image, ImageEnhance
 import re
+import pytesseract
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-image = np.array([0])
 type_conv = 0
 practice_length = 15
 practice_text = []
@@ -19,20 +14,11 @@ image_dir = r"C:\Users\astro\Documents\Handwriting\Images"
 sys_dir = r"C:\Users\astro\Documents\Handwriting\Sys"
 pdf_dir = r"C:\Users\astro\Documents\Handwriting\PDF"
 
-class MyApp(App):
-    def build(self):
-        texts = ""
-        for i in practice_text:
-            texts += i
-        return Label(text=texts)
-
 def camera():
-    global image
-    vid = cv2.VideoCapture(1)
+    vid = cv2.VideoCapture(0)
     while True:
          ret, frame = vid.read()
          cv2.imshow("normal",frame)
-         image = np.copy(frame)
          if cv2.waitKey(1) & 0xFF == ord('q'):
             file_count = len([name for name in os.listdir('.') if os.path.isfile(name)])
             os.chdir(image_dir)
@@ -42,7 +28,7 @@ def camera():
             break
     vid.release()
     cv2.destroyAllWindows()
-    return frame
+    return frame.copy()
 
 def settings():
     global image_dir
@@ -113,12 +99,46 @@ def create_practice():
 
 def annotate_image(image):
     print("Generating Legibility Report")
-    scale_percent =  100# percent of original size
-    width = int(image.shape[1] * scale_percent / 100)
+    result = ImageProcess(image, 1500)
+    cv2.imshow("res",result)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    max_score = findCharacters(result.copy())
+    boxes = pytesseract.image_to_string(result.copy())
+    count = len(boxes)
+    score = count/max_score * 100
+    print(score)
+
+def findCharacters(image):
+    gray = image.copy()
+    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU)
+    ctrs, hier = cv2.findContours(thresh.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    sorted_ctrs = sorted(ctrs, key=lambda ctr: cv2.boundingRect(ctr)[0])
+    character_count = 0
+    for i, ctr in enumerate(sorted_ctrs):
+        x, y, w, h = cv2.boundingRect(ctr)
+
+        roi = image[y:y + h, x:x + w]
+
+        area = w*h
+
+        if 100 < area < 1500 and (w / h) < 3:
+            character_count+=1
+            #rect = cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+    return character_count
+
+
+
+def ImageProcess(image, factor_value):
+    current_img_width = image.shape[1]
+    scale_percent = 100
+    if(current_img_width > factor_value):
+        scale_percent = factor_value/current_img_width*100
+    
+    width = int(current_img_width * scale_percent / 100)
     height = int(image.shape[0] * scale_percent / 100)
     dim = (width, height)
     resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
-    cv2.imshow("original",resized)
 
     cropped = transformation(resized)
     width = cropped.shape[1]
@@ -127,20 +147,17 @@ def annotate_image(image):
 
     gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
     gray = BrightnessContrast(3,gray)
-    ret,thresh = cv2.threshold(gray,165,255,cv2.THRESH_BINARY)
+    ret,thresh = cv2.threshold(gray,200,255,cv2.THRESH_BINARY)
     kernel = np.ones((1, 1), np.uint8)
     erode = cv2.erode(thresh, kernel, iterations = 1)
     result = cv2.bitwise_or(gray, erode)
-    cv2.imshow("contrast",gray)
-    cv2.imshow("res",result)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    return result
 
 def BrightnessContrast(factor, image):
     img = Image.fromarray(image)
     enhancer = ImageEnhance.Contrast(img)
     output = enhancer.enhance(factor)
-    return np.asarray(output)
+    return np.asarray(img)
     
 def blur_and_threshold(gray):
     gray = cv2.GaussianBlur(gray, (3, 3), 2)
@@ -205,14 +222,13 @@ def four_point_transform(image, pts):
 
 def transformation(image):
     image = image.copy()
-
     height, width, channels = image.shape
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     image_size = gray.size
-
     threshold = blur_and_threshold(gray)
-    threshold = cv2.blur(threshold,(5,5))
+    threshold = cv2.blur(threshold,(4,4))
     edges = cv2.Canny(threshold, 50, 150, apertureSize=7)
+
     contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     simplified_contours = []
 
@@ -230,11 +246,9 @@ def transformation(image):
          approx_contour = np.float32(approx_contour)
          dst = four_point_transform(threshold, approx_contour)
     croppedImage = dst
-    cleaned_image = final_image(croppedImage)
-    return cleaned_image
+    cleanedImage = final_image(croppedImage)
 
-
-# **Increase the brightness of the image by playing with the "V" value (from HSV)**
+    return cleanedImage
 
 def increase_brightness(img, value=30):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -254,10 +268,8 @@ def final_image(rotated):
     sharpened = increase_brightness(sharpened, 30)
     return sharpened
 
-
 def take_test():
     generate_practice(False)
-    MyApp().run()
     camera()
     annotate_image()
 
