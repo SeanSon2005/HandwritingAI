@@ -1,3 +1,4 @@
+from lib2to3.pytree import convert
 import numpy as np
 import cv2
 import os
@@ -6,6 +7,7 @@ from PIL import Image, ImageEnhance
 import re
 import pytesseract
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+import time
 
 type_conv = 0
 practice_length = 15
@@ -78,7 +80,9 @@ def generate_practice(usage):
         done = input()
         print("Launching Camera...")
         image = camera()
-        annotate_image(image)
+        output = annotate_image(image)
+        convertPDF(output)
+
 
 def create_practice():
     global practice_length
@@ -95,19 +99,43 @@ def create_practice():
         practice_text.append(text)
     print("Launching Camera...")
     image = camera()
-    annotate_image(image)
+    output = annotate_image(image)
+    convertPDF(output)
 
-def annotate_image(image):
+def resize(image, factor_value):
+    current_img_width = image.shape[1]
+    scale_percent = 100
+    if(current_img_width > factor_value):
+        scale_percent = factor_value/current_img_width*100
+    
+    width = int(current_img_width * scale_percent / 100)
+    height = int(image.shape[0] * scale_percent / 100)
+    dim = (width, height)
+    resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
+    return resized
+
+def annotate_image(original):
     print("Generating Legibility Report")
-    result = ImageProcess(image, 1500)
+    result = ImageProcess(original.copy(), 800)
+    h, w = result.shape
     cv2.imshow("res",result)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
     max_score = findCharacters(result.copy())
-    boxes = pytesseract.image_to_string(result.copy())
-    count = len(boxes)
-    score = count/max_score * 100
-    print(score)
+    boxes = pytesseract.image_to_boxes(result.copy(),lang='eng')
+    display = cv2.cvtColor(result.copy(),cv2.COLOR_GRAY2RGB)
+    tot_count = 0
+    for b in boxes.splitlines():
+        b = b.split(' ')
+        x1,y1,x2,y2 = int(b[1]),h - int(b[2]),int(b[3]),h - int(b[4])
+        if abs(y1-y2)/abs(x1-x2) < 1.5 and abs(x1-x2)/abs(y1-y2) < 8 and abs(x1-x2) < 100:
+            display = cv2.rectangle(display, (x1,y1),(x2,y2), (0, 255, 0), 1)
+            tot_count += 1
+    score = round((tot_count*1)/max_score * 100,2)
+    if score > 100:
+        score = 100
+    output = cv2.putText(display, "Score: "+str(score)+"%", (10,35), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255,100,0), 1, cv2.LINE_AA)
+    return output
 
 def findCharacters(image):
     gray = image.copy()
@@ -124,21 +152,12 @@ def findCharacters(image):
 
         if 100 < area < 1500 and (w / h) < 3:
             character_count+=1
-            #rect = cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
     return character_count
 
 
 
 def ImageProcess(image, factor_value):
-    current_img_width = image.shape[1]
-    scale_percent = 100
-    if(current_img_width > factor_value):
-        scale_percent = factor_value/current_img_width*100
-    
-    width = int(current_img_width * scale_percent / 100)
-    height = int(image.shape[0] * scale_percent / 100)
-    dim = (width, height)
-    resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
+    resized = resize(image,factor_value)
 
     cropped = transformation(resized)
     width = cropped.shape[1]
@@ -222,7 +241,6 @@ def four_point_transform(image, pts):
 
 def transformation(image):
     image = image.copy()
-    height, width, channels = image.shape
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     image_size = gray.size
     threshold = blur_and_threshold(gray)
@@ -268,10 +286,19 @@ def final_image(rotated):
     sharpened = increase_brightness(sharpened, 30)
     return sharpened
 
+
 def take_test():
     generate_practice(False)
-    camera()
-    annotate_image()
+    starting = time.time()
+    image = camera()
+    stopping = time.time()
+    output = annotate_image(image)
+    print("Time Taken: " + str(stopping - starting))
+    convertPDF(output)
+
+def convertPDF(image):
+    img = Image.fromarray(image)
+    img.save(pdf_dir+"\result.pdf")
 
 print("Welcome to Handwrite")
 while True:

@@ -4,10 +4,9 @@ import cv2
 import os
 import re
 import math
-import pytesseract
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-def resize(image, factor_value):
+
+def ImageProcess(image, factor_value):
     current_img_width = image.shape[1]
     scale_percent = 100
     if(current_img_width > factor_value):
@@ -17,53 +16,6 @@ def resize(image, factor_value):
     height = int(image.shape[0] * scale_percent / 100)
     dim = (width, height)
     resized = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
-    return resized
-
-def annotate_image(original):
-    print("Generating Legibility Report")
-    result = ImageProcess(original.copy(), 800)
-    h, w = result.shape
-    cv2.imshow("res",result)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    max_score = findCharacters(result.copy())
-    boxes = pytesseract.image_to_boxes(result.copy(),lang='eng')
-    display = cv2.cvtColor(result.copy(),cv2.COLOR_GRAY2RGB)
-    tot_count = 0
-    for b in boxes.splitlines():
-        b = b.split(' ')
-        x1,y1,x2,y2 = int(b[1]),h - int(b[2]),int(b[3]),h - int(b[4])
-        if abs(y1-y2)/abs(x1-x2) < 1.5 and abs(x1-x2)/abs(y1-y2) < 8 and abs(x1-x2) < 100:
-            display = cv2.rectangle(display, (x1,y1),(x2,y2), (0, 255, 0), 1)
-            tot_count += 1
-    score = round((tot_count*1)/max_score * 100,2)
-    if score > 100:
-        score = 100
-    output = cv2.putText(display, "Score: "+str(score)+"%", (10,35), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255,100,0), 1, cv2.LINE_AA)
-    return output
-
-def findCharacters(image):
-    gray = image.copy()
-    ret, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU)
-    ctrs, hier = cv2.findContours(thresh.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    sorted_ctrs = sorted(ctrs, key=lambda ctr: cv2.boundingRect(ctr)[0])
-    character_count = 0
-    for i, ctr in enumerate(sorted_ctrs):
-        x, y, w, h = cv2.boundingRect(ctr)
-
-        roi = image[y:y + h, x:x + w]
-
-        area = w*h
-
-        if 100 < area < 1500 and (w / h) < 3:
-            character_count+=1
-            #rect = cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-    return character_count
-
-
-
-def ImageProcess(image, factor_value):
-    resized = resize(image,factor_value)
 
     cropped = transformation(resized)
     width = cropped.shape[1]
@@ -155,6 +107,14 @@ def transformation(image):
     edges = cv2.Canny(threshold, 50, 150, apertureSize=7)
 
     contours, hierarchy = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    corners = cv2.goodFeaturesToTrack(edges, 4, 0.5, 50)
+    for corner in corners:
+        x,y = int(corner[0][0]),int(corner[0][1])
+        cv2.circle(image,(x,y),5,(255,0,0),-1)
+    cv2.imshow("res", image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
     simplified_contours = []
 
     for cnt in contours:
@@ -195,8 +155,7 @@ def final_image(rotated):
 
 os.chdir(r"C:\Users\astro\Documents\Handwriting\Images")
 img = cv2.imread("image0.jpg", cv2.IMREAD_COLOR)
-output = annotate_image(img)
-cv2.imwrite("final.jpg",output)
+output = ImageProcess(img,800)
 cv2.imshow("res", output)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
