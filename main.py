@@ -16,19 +16,23 @@ image_dir = r"C:\Users\astro\Documents\Handwriting\Images"
 sys_dir = r"C:\Users\astro\Documents\Handwriting\Sys"
 pdf_dir = r"C:\Users\astro\Documents\Handwriting\PDF"
 
+#camera confirms resolution of the camera and renders the image to send
+#return image
 def camera():
-    vid = cv2.VideoCapture(0)
+    vid = cv2.VideoCapture(0) #creates camera video object
+    vid.set(cv2.CAP_PROP_FRAME_WIDTH, 1920) #sets camera width
+    vid.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080) #sets camera height
     while True:
-         ret, frame = vid.read()
-         cv2.imshow("normal",frame)
-         if cv2.waitKey(1) & 0xFF == ord('q'):
+         ret, frame = vid.read() #gets one frame from camera feed
+         cv2.imshow("normal",frame) #updates the display window
+         if cv2.waitKey(1) & 0xFF == ord('q'): #waits for caputre key then processes the frame
             file_count = len([name for name in os.listdir('.') if os.path.isfile(name)])
             os.chdir(image_dir)
             complete_path = image_dir + "\image"+str(file_count)+".jpg"
-            cv2.imwrite(complete_path, frame)
-            print("Saved Image")
+            cv2.imwrite(complete_path, frame) #saves the frame to the alloted directory
+            print("Saved Image") 
             break
-    vid.release()
+    vid.release() #closing all instances of the camera and windows
     cv2.destroyAllWindows()
     return frame.copy()
 
@@ -61,7 +65,7 @@ def settings():
     print("\n------------------")
     print("Changes Saved")
 
-def generate_practice(usage):
+def generate_practice():
     global practice_length
     global practice_text
     f = open(sys_dir+"\dictionary.txt", "r")
@@ -69,19 +73,35 @@ def generate_practice(usage):
     
     for i in range(practice_length):
         practice_text.append(dict[randint(0, 45382)][:-1])
-    if(usage):
-        print("------------------")
-        print("")
-        for i in practice_text:
-            print(i,end=" ")
-        print("\n")
-        print("------------------")
-        print("Enter when done")
-        done = input()
-        print("Launching Camera...")
-        image = camera()
-        output = annotate_image(image)
-        convertPDF(output)
+
+    print("------------------")
+    print("")
+    for i in practice_text:
+        print(i,end=" ")
+    print("\n")
+    print("------------------")
+    print("Enter when done")
+    done = input()
+    print("Launching Camera...")
+    image = camera()
+    output = annotate_image(image)
+    convertPDF(output)
+
+def generate_practice_test():
+    global practice_length
+    global practice_text
+    f = open(sys_dir+"\dictionary.txt", "r")
+    dict = f.readlines()
+    
+    for i in range(practice_length):
+        practice_text.append(dict[randint(0, 45382)][:-1])
+
+    print("------------------")
+    print("")
+    for i in practice_text:
+        print(i,end=" ")
+    print("\n")
+    print("------------------")
 
 
 def create_practice():
@@ -131,7 +151,7 @@ def annotate_image(original):
         if abs(y1-y2)/abs(x1-x2) < 1.5 and abs(x1-x2)/abs(y1-y2) < 8 and abs(x1-x2) < 100:
             display = cv2.rectangle(display, (x1,y1),(x2,y2), (0, 255, 0), 1)
             tot_count += 1
-    score = round((tot_count*1)/max_score * 100,2)
+    score = round(((tot_count*1.3)/max_score) * 100,2)
     if score > 100:
         score = 100
     output = cv2.putText(display, "Score: "+str(score)+"%", (10,35), cv2.FONT_HERSHEY_COMPLEX, 0.6, (255,100,0), 1, cv2.LINE_AA)
@@ -145,21 +165,19 @@ def findCharacters(image):
     character_count = 0
     for i, ctr in enumerate(sorted_ctrs):
         x, y, w, h = cv2.boundingRect(ctr)
-
         roi = image[y:y + h, x:x + w]
 
         area = w*h
 
-        if 100 < area < 1500 and (w / h) < 3:
+        if 30 < area < 1500 and (w / h) < 4:
             character_count+=1
     return character_count
 
 
 
 def ImageProcess(image, factor_value):
-    resized = resize(image,factor_value)
 
-    cropped = transformation(resized)
+    cropped = transformation(image)
     width = cropped.shape[1]
     height = cropped.shape[0]
     cropped = cropped[5:(height-5)]
@@ -288,8 +306,9 @@ def final_image(rotated):
 
 
 def take_test():
-    generate_practice(False)
+    generate_practice_test()
     starting = time.time()
+    print("START TIME! - Launching Camera...")
     image = camera()
     stopping = time.time()
     output = annotate_image(image)
@@ -298,7 +317,7 @@ def take_test():
 
 def convertPDF(image):
     img = Image.fromarray(image)
-    img.save(pdf_dir+"\result.pdf")
+    img.save(pdf_dir+"\\result.pdf")
 
 print("Welcome to Handwrite")
 while True:
@@ -308,7 +327,8 @@ while True:
     print("3 Create practice")
     print("4 Take Test")
     print("5 Change Practice Settings")
-    print("6 Quit APP")
+    print("6 Suggest Learning Links")
+    print("7 Quit APP")
     decision = input()
     print("------------------")
     if(int(decision) == 1):
@@ -316,7 +336,7 @@ while True:
         camera()
     if(int(decision) == 2):
         print("Generating Practice...")
-        generate_practice(True)
+        generate_practice()
     if(int(decision) == 3):
         print("Opening Practice Creator...")
         create_practice()
@@ -327,6 +347,10 @@ while True:
         print("Opening Settings...")
         settings()
     if(int(decision) == 6):
+        print("Sending Links:")
+        print("https://www.worksheetworks.com/english/writing/handwriting.html")
+        print("https://www.handwritingpractice.net/")
+    if(int(decision) == 7):
         print("Closing App...")
         break
     print("")
